@@ -1,0 +1,114 @@
+name: INFINIX NETWORK - PANEL + TAILSCALE
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  vps-panel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: "1. Preparar Entorno"
+        uses: actions/checkout@v4
+
+      - name: "2. Recuperar Panel y Servidor (Caché)"
+        id: cache-srv
+        uses: actions/cache/restore@v4
+        with:
+          path: INFINIX_DATA
+          key: infinix-panel-${{ github.run_id }}
+          restore-keys: |
+            infinix-panel-
+
+      - name: "3. Desplegar PufferPanel (Arranque Rápido)"
+        run: |
+          # Crear carpetas de persistencia
+          mkdir -p INFINIX_DATA/config INFINIX_DATA/var
+          chmod -R 777 INFINIX_DATA
+          
+          # Desplegar el Panel en segundo plano (-d)
+          docker run -d \
+            --name pufferpanel \
+            -p 8080:8080 \
+            -p 5656:5656 \
+            -v $(pwd)/INFINIX_DATA/config:/etc/pufferpanel \
+            -v $(pwd)/INFINIX_DATA/var:/var/lib/pufferpanel \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            --restart always \
+            pufferpanel/pufferpanel:latest
+            
+          echo "✅ Contenedor del panel encendido. Esperando que inicie el motor interno..."
+          sleep 15
+          
+          # AHORA SÍ: El espacio entre el if y el [ está puesto correctamente
+          if[ ! -f "INFINIX_DATA/config/pufferpanel.json" ]; then
+            echo "🆕 Creando cuenta de Administrador por primera vez..."
+            docker exec pufferpanel /pufferpanel/pufferpanel user add --email admin@infinix.com --name admin --password adminpassword --admin || true
+          else
+            echo "♻️ Configuración existente detectada. Cargando panel..."
+          fi
+
+      - name: "4. Iniciar Red Pública (Playit Exclusivo Jugadores)"
+        run: |
+          # Iniciar Playit en segundo plano con tu clave oficial
+          docker run -d \
+            --name=playit \
+            --net=host \
+            -e SECRET_KEY=6d0615844adfcc7f2bd89a75d44504c48aaab7c23c0ca4aa1ead3e3ac665a8b7 \
+            ghcr.io/playit-cloud/playit-agent:0.17
+            
+          echo "✅ Túnel de jugadores online. ¡Red conectada!"
+
+      - name: "5. Instalar Red Privada (Tailscale + SSH)"
+        run: |
+          echo "⏳ Configurando acceso de Administradores..."
+          
+          # Contraseña de la VPS
+          echo "runner:runnerpass" | sudo chpasswd
+          
+          # Instalar Tailscale
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          # Conectar con tu llave y Hostname personalizado
+          sudo tailscale up --authkey=tskey-auth-kCxCNvJST811CNTRL-XTonMx8eTw3YNvyQgS7Vw3vJvFpcVmSG --hostname=Infinix-Server --ssh
+          
+          echo "---------------------------------------------------------"
+          echo "👑 ACCESO PRIVADO STAFF (Vía Tailscale):"
+          echo "💻 Consola Root SSH : ssh runner@$(tailscale ip -4)"
+          echo "🌐 PufferPanel Web  : http://$(tailscale ip -4):8080"
+          echo "---------------------------------------------------------"
+
+      - name: "6. Ciclo de Vida del Servidor (5h 45m)"
+        run: |
+          echo "Protección Anti-DDoS Activa. Esperando al relevo..."
+          sleep 20700 
+
+      - name: "7. Apagado Seguro y Guardado"
+        if: always()
+        run: |
+          echo "🛑 Deteniendo PufferPanel y Playit..."
+          docker stop pufferpanel || true
+          docker stop playit || true
+          sleep 5
+
+      - name: "8. Save Cache"
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: INFINIX_DATA
+          key: infinix-panel-${{ github.run_id }}
+
+      - name: "9. Relevo Automático"
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "⏰ Lanzando siguiente instancia..."
+          # CAMBIA ESTO POR EL NOMBRE EXACTO DE TU ARCHIVO YML (ej: main.yml)
+          gh workflow run "main.yml" --ref main
+          sleep 600
