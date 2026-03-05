@@ -46,7 +46,7 @@ jobs:
           sleep 15
           
           # AHORA SÍ: El espacio entre el if y el [ está puesto correctamente
-          if[ ! -f "INFINIX_DATA/config/pufferpanel.json" ]; then
+          if [ ! -f "INFINIX_DATA/config/pufferpanel.json" ]; then
             echo "🆕 Creando cuenta de Administrador por primera vez..."
             docker exec pufferpanel /pufferpanel/pufferpanel user add --email admin@infinix.com --name admin --password adminpassword --admin || true
           else
